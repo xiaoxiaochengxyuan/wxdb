@@ -95,6 +95,10 @@ class DbConnection extends \PDO {
 	public function getAllColumnNames($tableName) {
 		return \array_column($this->getAllColumn($tableName), 'Field');
 	}
+	
+	
+	
+	
 }
 
 /**
