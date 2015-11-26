@@ -1,0 +1,16 @@
+{
+	"keywords" : [
+		"wxdb"
+	],
+	"autoload" : {
+		"psr-4" : {
+			"Wx\\Wxdb\\" : "src"
+		}
+	},
+	"name" : "wx/wxdb",
+	"license" : "Apache-2.0",
+	"description" : "dbutils like yii querybuilder",
+	"require" : {
+		"php" : ">=5.5"
+	}
+}
