@@ -12,5 +12,10 @@
 	"description" : "dbutils like yii querybuilder",
 	"require" : {
 		"php" : ">=5.5"
-	}
+	},
+	"authors" : [{
+			"name" : "xiawei",
+			"email" : "mail.xiawei@163.com"
+		}
+	]
 }
