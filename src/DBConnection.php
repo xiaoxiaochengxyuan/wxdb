@@ -7,7 +7,7 @@ if (!\extension_loaded('PDO')) {
  * 数据库连接对象
  * @author xiawei
  */
-class DbConnection extends \PDO {
+class DBConnection extends \PDO {
 	/**
 	 * 是否在事物中
 	 * @var boolean
