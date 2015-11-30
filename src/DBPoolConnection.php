@@ -1,118 +1,134 @@
 <?php
 namespace Wx\Wxdb;
-if (!\extension_loaded('PDO')) {
-	throw new \Exception('please install PDO extension', 40025);
-}
 /**
- * 数据库连接对象
+ * 使用PHP-Pool-Connection数据库连接池的DB操作对象
  * @author xiawei
  */
-class DbConnection extends \PDO {
+class DBPoolConnection {
+	/**
+	 * 数据库连接
+	 * @var \PDO
+	 */
+	private $connection = null;
 	/**
 	 * 是否在事物中
 	 * @var boolean
 	 */
-	private $isTransaction;
+	private $isTransaction = false;
 	
 	/**
-	 * 最后运行的sql
+	 * 最后运行的Sql
 	 * @var string
 	 */
-	private $lastSql;
+	private $lastSql = null;
 	
 	/**
-	 * 创建一个SqlCommand
-	 * @param string $sql
-	 * @return \DB\SqlCommand
+	 * 构造方法
+	 * @param string $dns mysql的连接信息
+	 * @param string $username 用户名
+	 * @param unknown $password 密码
+	 * @param array $options 附件选项
 	 */
-	public function createCommand($sql = null) {
-		return new SqlCommand($this, $sql);
+	public function __construct($dns, $username, $password, array $options = null) {
+		if (!\extension_loaded('PDO')) {
+			DBPoolException::throwException('PDO is not install.', DBPoolException::ERROR_CODE_DB_PDO_IS_NOT_INSTALL);
+		}
+		if (!\extension_loaded('connect_pool')) {
+			DBPoolException::throwException('PHP Connect pool is not install.', DBPoolException::ERROR_CODE_DB_PHP_CONNECT_POOL_IS_NOT_INSTALL);
+		}
+		$this->connection = new \pdo_connect_pool('mysql:host=127.0.0.1;dbname=test', 'root', '398062080', $options);
 	}
 	
 	/**
-	 * (non-PHPdoc)
-	 * @see PDO::beginTransaction()
+	 * 获取一个数据库连接
+	 * @return \PDO
+	 */
+	public function getConn() {
+		return $this->connection;
+	}
+	
+	/**
+	 * 开启一个事物
+	 * @return boolean 成功返回true,否则返回false
 	 */
 	public function beginTransaction() {
 		if ($this->isTransaction) {
-			$this->throwException("Has a Transaction which is not commit or rollback");
+			DBPoolException::throwException('Has a trnasaction are not commit or rollback.', DBPoolException::ERROR_CODE_DB_IN_TRANSACTION);
 		}
-		$this->isTransaction = true;
-		return parent::beginTransaction();
+		if ($this->getConn()->beginTransaction()) {
+			$this->isTransaction = true;
+			return true;
+		}
+		return false;
 	}
 	
 	/**
-	 * (non-PHPdoc)
-	 * @see PDO::commit()
+	 * 提交一个事物
+	 * @return boolean
 	 */
 	public function commit() {
-		if ($this->isTransaction) {
-			if (parent::commit()) {
-				$this->isTransaction = false;
-				return true;
-			}
-			return false;
-		} else {
-			$this->throwException("Has no connection in Transaction");
+		if (!$this->isTransaction) {
+			DBPoolException::throwException('Has not a transaction in this connection.', DBPoolException::ERROR_CODE_DB_NOT_IN_TRANSACTION);
+		}
+		if ($this->getConn()->commit()) {
+			$this->isTransaction = false;
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * 回退一个事物
+	 * @return boolean
+	 */
+	public function rollback() {
+		if (!$this->isTransaction) {
+			DBPoolException::throwException('Has not a transaction in this connection.', DBPoolException::ERROR_CODE_DB_NOT_IN_TRANSACTION);
+		}
+		if ($this->getConn()->rollBack()) {
+			$this->isTransaction = false;
+			return true;
+		}
+		return false;
+	}
+	
+	
+	/**
+	 * 释放连接池的连接资源
+	 */
+	public function release() {
+		if (!empty($this->connection)) {
+			$this->connection->release();
 		}
 	}
 	
 	/**
-	 * (non-PHPdoc)
-	 * @see PDO::rollBack()
+	 * 关闭
 	 */
-	public function rollBack() {
-		if ($this->isTransaction) {
-			if (parent::rollBack()) {
-				$this->isTransaction = false;
-				return true;
-			}
-			return false;
-		} else {
-			$this->throwException("Has no connection in Transaction");
+	public function close() {
+		$this->release();
+		if (!empty($this->connection)) {
+			$this->connection = null;
 		}
 	}
 	
-	
 	/**
-	 * 抛出异常
-	 * @param string $message 异常信息
-	 * @param string $code    异常代码
-	 * @throws \Exception
+	 * 析构方法
 	 */
-	public function throwException($message = null, $code = null) {
-		$errorInfo = $this->errorInfo();
-		if (!empty($errorInfo)) {
-			if (empty($message)) {
-				$message = $errorInfo[2];
-			}
-			if (empty($code)) {
-				$code = $errorInfo[0];
-			}
-		}
-		throw new \Exception($message, $code, null);
+	public function __destruct() {
+		$this->close();
 	}
 	
 	/**
-	 * 获取所有列信息
-	 * @param unknown $tableName
-	 * @return Ambigous <multitype:, multitype:mixed >
+	 * 获取一个Sql命令
+	 * @return \Wx\Wxdb\SqlPoolCommand
 	 */
-	public function getAllColumn($tableName) {
-		return $this->createCommand()->queryAll("SHOW COLUMNS FROM {$tableName}");
+	public function createCommand() {
+		return new SqlPoolCommand($this);
 	}
 	
 	/**
-	 * 获取所有的列名
-	 * @param unknown $tableName
-	 * @return multitype:
-	 */
-	public function getAllColumnNames($tableName) {
-		return \array_column($this->getAllColumn($tableName), 'Field');
-	}
-	
-	/**
-	 * 设置最后运行的Sql
+	 * 设置最后运行的sql
 	 * @param string $sql
 	 */
 	public function setLastSql($sql) {
@@ -121,6 +137,7 @@ class DbConnection extends \PDO {
 	
 	/**
 	 * 获取最后运行的Sql
+	 * @param string $sql
 	 * @return string
 	 */
 	public function getLastSql() {
@@ -129,22 +146,15 @@ class DbConnection extends \PDO {
 }
 
 /**
- * Sql命令相关的对象
+ * Sql命令
  * @author xiawei
  */
-class SqlCommand {
+class SqlPoolCommand {
 	/**
-	 * 对应的数据库连接
-	 * @var DbConnection
+	 * 数据库连接
+	 * @var DBPoolConnection
 	 */
-	private $connection;
-	
-	/**
-	 * 对应的
-	 * @var string
-	 */
-	private $sql;
-	
+	private $connection = null;
 	
 	private $select_str = '';
 	private $select_from = '';
@@ -155,18 +165,15 @@ class SqlCommand {
 	private $select_order = '';
 	private $select_limit = '';
 	
+	private $sql = '';
+	
 	/**
-	 * 构造方法
-	 * @param DbConnection $connection
-	 * @param string $sql
+	 * 构造一个Sql命令
+	 * @param DBPoolConnection $connection
 	 */
-	public function __construct(DbConnection $connection, $sql = null) {
+	public function __construct(DBPoolConnection $connection, $sql = null) {
 		$this->connection = $connection;
 		$this->sql = $sql;
-	}
-	
-	private function buildSql() {
-		return "{$this->select_str} {$this->select_from} {$this->select_join} {$this->select_where} {$this->select_group} {$this->select_having} {$this->select_order} {$this->select_limit}";
 	}
 	
 	/**
@@ -181,19 +188,6 @@ class SqlCommand {
 	}
 	
 	/**
-	 * 运行一条sql
-	 * @param string $sql
-	 * @return number
-	 */
-	public function exec($sql = null) {
-		if ($sql = null) {
-			$sql = $this->getSql();
-		}
-		$this->connection->setLastSql($sql);
-		return $this->connection->exec($sql);
-	}
-	
-	/**
 	 * 执行一条查询命令
 	 * @param string $sql
 	 * @return \PDOStatement
@@ -203,35 +197,46 @@ class SqlCommand {
 			$sql = $this->getSql();
 		}
 		$this->connection->setLastSql($sql);
-		$statement = $this->connection->query($sql);
+		$statement = $this->connection->getConn()->query($sql);
 		if (empty($statement)) {
-			$this->throwException("Sql Exception, the error sql is {$this->connection->getLastSql()}");
+			DBPoolException::throwException("Sql Exception, the error sql is {$this->connection->getLastSql()}!!!");
 		}
 		return $statement;
 	}
 	
+	/**
+	 * 关闭数据库连接
+	 */
+	public function __destruct() {
+		$this->connection->release();
+	}
+	
+	
+	private function buildSql() {
+		return "{$this->select_str} {$this->select_from} {$this->select_join} {$this->select_where} {$this->select_group} {$this->select_having} {$this->select_order} {$this->select_limit}";
+	}
+	
+	/**
+	 * 运行一条sql
+	 * @param string $sql
+	 * @return number
+	 */
+	public function exec($sql = null) {
+		if ($sql = null) {
+			$sql = $this->getSql();
+		}
+		$this->lastSql = $sql;
+		return $this->connection->getConn()->exec($sql);
+	}
+	
+	/**
+	 * 获取最后运行的Sql
+	 * @return string
+	 */
 	public function getLastSql() {
 		return $this->lastSql;
 	}
 	
-	/**
-	 * 抛出异常
-	 * @param string $message 异常信息
-	 * @param string $code    异常代码
-	 * @throws \Exception
-	 */
-	private function throwException($message = null, $code = null) {
-		$errorInfo = $this->connection->errorInfo();
-		if (!empty($errorInfo)) {
-			if (empty($message)) {
-				$message = $errorInfo[2];
-			}
-			if (empty($code)) {
-				$code = $errorInfo[0];
-			}
-		}
-		throw new \Exception($message, $code, null);
-	}
 	
 	private function buildWhere($condition = array(), $logic = 'AND') {
 		$s = $this->buildCondition($condition, $logic);
@@ -240,12 +245,65 @@ class SqlCommand {
 		return $s;
 	}
 	
+	
+	private function quote($data, $paramType = \PDO::PARAM_STR) {
+		if (\is_array($data) || \is_object($data)) {
+			$return = array();
+			foreach ($data as $k => $v) {
+				$return [$k] = $this->quote($v);
+			}
+			return $return;
+		} else {
+			$data = $this->connection->getConn()->quote($data, $paramType);
+			if (false === $data)
+				$data = "''";
+			return $data;
+		}
+	}
+	
+	private function quoteObj($objName) {
+		if (\is_array($objName)) {
+			$return = array();
+			foreach ($objName as $k => $v) {
+				$return[] = $this->quoteObj($v);
+			}
+			return $return;
+		} else {
+			$v = \trim($objName);
+			$v = \str_replace('`', '', $v);
+			$v = \preg_replace('# +AS +| +#i', ' ', $v);
+			$v = \explode(' ', $v);
+			foreach ($v as $k_1 => $v_1) {
+				$v_1 = \trim($v_1);
+				if ($v_1 == '') {
+					unset($v[$k_1]);
+					continue;
+				}
+				if (strpos($v_1, '.')) {
+					$v_1 = \explode('.', $v_1);
+					foreach ($v_1 as $k_2 => $v_2) {
+						if (\trim($v_2) != '*') {
+							$v_1[$k_2] = '`' . \trim($v_2) . '`';
+						}
+					}
+					$v[$k_1] = \implode('.', $v_1);
+				} else {
+					if (\trim($v_1) != '*') {
+						$v[$k_1] = '`' . $v_1 . '`';
+					}
+				}
+			}
+			$v = \implode(' AS ', $v);
+			return $v;
+		}
+	}
+	
 	private function buildCondition($condition = array(), $logic = 'AND') {
 		if (!\is_array($condition)) {
 			if (\is_string($condition)) {
 				$count = \preg_match('#\>|\<|\=| #', $condition, $logic);
 				if (!$count) {
-					$this->throwException('bad sql condition: must be a valid sql condition');
+					DBPoolException::throwException('bad sql condition: must be a valid sql condition');
 				}
 				$condition = \explode($logic[0], $condition);
 				if(!\is_numeric($condition[0]))
@@ -256,7 +314,7 @@ class SqlCommand {
 				return $condition;
 			}
 	
-			$this->throwException('bad sql condition: ' . \gettype($condition));
+			DBPoolException::throwException('bad sql condition: ' . \gettype($condition));
 		}
 		$logic = \strtoupper($logic);
 		$content = null;
@@ -336,58 +394,6 @@ class SqlCommand {
 	}
 	
 	
-	private function quote($data, $paramType = \PDO::PARAM_STR) {
-		if (\is_array($data) || \is_object($data)) {
-			$return = array();
-			foreach ($data as $k => $v) {
-				$return [$k] = $this->quote($v);
-			}
-			return $return;
-		} else {
-			$data = $this->connection->quote($data, $paramType);
-			if (false === $data)
-				$data = "''";
-			return $data;
-		}
-	}
-	
-	private function quoteObj($objName) {
-		if (\is_array($objName)) {
-			$return = array();
-			foreach ($objName as $k => $v) {
-				$return[] = $this->quoteObj($v);
-			}
-			return $return;
-		} else {
-			$v = \trim($objName);
-			$v = \str_replace('`', '', $v);
-			$v = \preg_replace('# +AS +| +#i', ' ', $v);
-			$v = \explode(' ', $v);
-			foreach ($v as $k_1 => $v_1) {
-				$v_1 = \trim($v_1);
-				if ($v_1 == '') {
-					unset($v[$k_1]);
-					continue;
-				}
-				if (strpos($v_1, '.')) {
-					$v_1 = \explode('.', $v_1);
-					foreach ($v_1 as $k_2 => $v_2) {
-						if ('*' != \trim($v_2)) {
-							$v_1[$k_2] = '`' . \trim($v_2) . '`';
-						}
-					}
-					$v[$k_1] = \implode('.', $v_1);
-				} else {
-					if ('*' != \trim($v_1)) {
-						$v[$k_1] = '`' . $v_1 . '`';
-					}
-				}
-			}
-			$v = \implode(' AS ', $v);
-			return $v;
-		}
-	}
-	
 	/**
 	 * 删除数据
 	 * @param string $table 删除对应表的数据
@@ -417,14 +423,14 @@ class SqlCommand {
 		}
 		$columns = \substr($columns, 0, \strlen($columns) - 1);
 		$values = \substr($values, 0, \strlen($values) - 1);
-		
+	
 		$table = $this->quoteObj($table);
 		$sql = "INSERT INTO {$table} ({$columns}) VALUES ({$values})";
 		$ret = $this->exec($sql, false);
 		if ($ret === false) {
 			return false;
 		}
-		$id = $this->connection->lastInsertId();
+		$id = $this->connection->getConn()->lastInsertId();
 		if (!empty($id)) {
 			return $id;
 		}
@@ -508,7 +514,7 @@ class SqlCommand {
 		return $this;
 	}
 	
-	protected function joinInternal($join, $table, $cond) {
+	private function joinInternal($join, $table, $cond) {
 		$table = $this->quoteObj($table);
 		$this->select_join .= " $join $table ";
 		if (\is_string($cond) && (\strpos($cond, '=') === false && \strpos($cond, '<') === false && \strpos($cond, '>') === false)) {
@@ -695,5 +701,43 @@ class SqlCommand {
 			$this->select_limit .= " LIMIT $a, $b ";
 		}
 		return $this;
+	}
+	
+	/**
+	 * 获取所有列信息
+	 * @param unknown $tableName
+	 * @return Ambigous <multitype:, multitype:mixed >
+	 */
+	public function getAllColumn($tableName) {
+		return $this->createCommand()->queryAll("SHOW COLUMNS FROM {$tableName}");
+	}
+	
+	/**
+	 * 获取所有的列名
+	 * @param unknown $tableName
+	 * @return multitype:
+	 */
+	public function getAllColumnNames($tableName) {
+		return \array_column($this->getAllColumn($tableName), 'Field');
+	}
+}
+
+/**
+ * 数据库相关的异常信息
+ * @author xiawei
+ */
+class DBPoolException extends \Exception{
+	//PDO扩展没有安装异常代码
+	const ERROR_CODE_DB_PDO_IS_NOT_INSTALL = 50050;
+	//PHP连接池扩展没有安装异常代码
+	const ERROR_CODE_DB_PHP_CONNECT_POOL_IS_NOT_INSTALL = 50051;
+	//数据库连接中存在一个事物的错误代码
+	const ERROR_CODE_DB_IN_TRANSACTION = 50052;
+	//数据库连接中不存在事物的错误代码
+	const ERROR_CODE_DB_NOT_IN_TRANSACTION = 50053;
+	//Sql错误
+	const ERROR_CODE_DB_SQL_ERROR = 50054;
+	public static function throwException($message, $code = self::ERROR_CODE_DB_SQL_ERROR, $previous = null) {
+		throw new DBPoolException($message, $code, $previous);
 	}
 }
