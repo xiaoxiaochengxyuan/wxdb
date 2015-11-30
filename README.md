@@ -8,6 +8,11 @@
 (5),支持Composer
 (6),使用实列
 $dbConnection = new DBConnection(.....);
-$users = $dbConnection->createCommand()->select()->from('user')->where('id in' => array(1,2,3,4))->order('age desc')->limit(2,5)->queryAll();
+$users = $dbConnection->createCommand()
+  ->select()
+  ->from('user')
+  ->where('id in' => array(1,2,3,4))->order('age desc')
+  ->limit(2,5)
+  ->queryAll();
 #联系方式
 mail.xiawei@163.com  如果有大牛发现bug，可以发送到我邮箱哦！！
