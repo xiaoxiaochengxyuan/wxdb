@@ -8,6 +8,11 @@ if (!\extension_loaded('PDO')) {
  * @author xiawei
  */
 class DBConnection extends \PDO {
+	
+	public function __construct($dsn, $username, $passwd, $charset = 'utf8', $options) {
+		parent::__construct($dsn, $username, $passwd, $options);
+		$this->query("set names {$charset}");
+	}
 	/**
 	 * 是否在事物中
 	 * @var boolean

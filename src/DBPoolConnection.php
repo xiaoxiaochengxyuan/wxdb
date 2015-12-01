@@ -29,7 +29,7 @@ class DBPoolConnection {
 	 * @param unknown $password 密码
 	 * @param array $options 附件选项
 	 */
-	public function __construct($dns, $username, $password, array $options = null) {
+	public function __construct($dns, $username, $password, $charset = 'utf8', array $options = null) {
 		if (!\extension_loaded('PDO')) {
 			DBPoolException::throwException('PDO is not install.', DBPoolException::ERROR_CODE_DB_PDO_IS_NOT_INSTALL);
 		}
@@ -37,6 +37,7 @@ class DBPoolConnection {
 			DBPoolException::throwException('PHP Connect pool is not install.', DBPoolException::ERROR_CODE_DB_PHP_CONNECT_POOL_IS_NOT_INSTALL);
 		}
 		$this->connection = new \pdo_connect_pool('mysql:host=127.0.0.1;dbname=test', 'root', '398062080', $options);
+		$this->connection->query("set names {$charset}");
 	}
 	
 	/**
@@ -198,6 +199,7 @@ class SqlPoolCommand {
 		}
 		$this->connection->setLastSql($sql);
 		$statement = $this->connection->getConn()->query($sql);
+		$this->connection->release();
 		if (empty($statement)) {
 			DBPoolException::throwException("Sql Exception, the error sql is {$this->connection->getLastSql()}!!!");
 		}
@@ -226,7 +228,9 @@ class SqlPoolCommand {
 			$sql = $this->getSql();
 		}
 		$this->lastSql = $sql;
-		return $this->connection->getConn()->exec($sql);
+		$result = $this->connection->getConn()->exec($sql);
+		$this->connection->release();
+		return $result;
 	}
 	
 	/**
