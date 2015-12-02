@@ -9,7 +9,7 @@ if (!\extension_loaded('PDO')) {
  */
 class DBConnection extends \PDO {
 	
-	public function __construct($dsn, $username, $passwd, $charset = 'utf8', $options) {
+	public function __construct($dsn, $username, $passwd, $charset = 'utf8', $options = array()) {
 		parent::__construct($dsn, $username, $passwd, $options);
 		$this->query("set names {$charset}");
 	}
